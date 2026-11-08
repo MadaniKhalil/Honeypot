@@ -46,6 +46,59 @@ int main(void)
 
     printf("connected\n");
 
+    char *msg = "login :";
+    int len;
+    ssize_t bytes_sent;
+    len = strlen(msg);
+    bytes_sent = send(connection_fd,msg,len,0);
+    if (bytes_sent == -1){
+      perror("send");
+      close(connection_fd);
+      close(listen_fd);
+      return 1;
+    }
+    char buffer[256];
+    int rec = recv(connection_fd,buffer,sizeof buffer - 1,0);
+    if (rec == -1){
+      perror("receive");
+      close(connection_fd);
+      close(listen_fd);
+      return 1;
+    }
+    char *msg1 = "password: ";
+    int len1;
+    ssize_t bytes_sent1;
+    len1 = strlen(msg1);
+    bytes_sent1 = send(connection_fd,msg1,len1,0);
+    if (bytes_sent1 == -1){
+      perror("send");
+      close(connection_fd);
+      close(listen_fd);
+      return 1;
+    }
+    char buffer1[256];
+    int rec1 = recv(connection_fd,buffer1,sizeof buffer1 - 1,0);
+    if (rec1 == -1){
+      perror("receive");
+      close(connection_fd);
+      close(listen_fd);
+      return 1;
+    }
+    char *msg2 = "login incorrect";
+    int len2;
+    ssize_t bytes_sent2;
+    len2 = strlen(msg2);
+    bytes_sent2 = send(connection_fd,msg2,len2,0);
+    if (bytes_sent2 == -1){
+      perror("send");
+      close(connection_fd);
+      close(listen_fd);
+      return 1;
+    }
+
+
+
+
     close(connection_fd);
     close(listen_fd);
     return 0;
