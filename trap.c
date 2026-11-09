@@ -81,11 +81,21 @@ int main(void)
         send_text(connection_fd, "password: ") == -1 ||
         read_line(connection_fd, buffer, sizeof buffer) == -1 ||
         send_text(connection_fd, "Login incorrect\n") == -1) {
+
         close(connection_fd);
         close(listen_fd);
         return 1;
     }
-
+    char ip_text_buffer[INET_ADDRSTRLEN];
+    struct sockaddr_in * visitor_ipv4 = (struct sockaddr_in *)&visitor_addr;
+    // (->) is for struct pointers , if you can access struct directly just use (.)
+    if (inet_ntop(AF_INET,&visitor_ipv4->sin_addr,ip_text_buffer,sizeof ip_text_buffer) == NULL){
+        perror("inet_ntop");
+        close(connection_fd); 
+        close(listen_fd);
+        return 1;
+    }
+    printf("%s\n",ip_text_buffer);
     close(connection_fd);
     close(listen_fd);
     return 0;
