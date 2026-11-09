@@ -74,12 +74,12 @@ int main(void)
 
     printf("connected\n");
 
-    char buffer[256];
-
+    char username[256];
+    char password[256];
     if (send_text(connection_fd, "username: ") == -1 ||
-        read_line(connection_fd, buffer, sizeof buffer) == -1 ||
+        read_line(connection_fd, username, sizeof username) == -1 ||
         send_text(connection_fd, "password: ") == -1 ||
-        read_line(connection_fd, buffer, sizeof buffer) == -1 ||
+        read_line(connection_fd, password, sizeof password) == -1 ||
         send_text(connection_fd, "Login incorrect\n") == -1) {
 
         close(connection_fd);
@@ -95,7 +95,9 @@ int main(void)
         close(listen_fd);
         return 1;
     }
-    printf("%s\n",ip_text_buffer);
+    printf("username: %s",username);
+    printf("password: %s",password);
+    printf("adress: %s\n",ip_text_buffer);
     close(connection_fd);
     close(listen_fd);
     return 0;
