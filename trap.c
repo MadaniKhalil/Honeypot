@@ -15,7 +15,7 @@ static int send_text(int socket_fd, const char *msg)
         return -1;
     }
     if (bytes_sent < len) {
-        fprintf(stderr, "send: short write\n");
+        fprintf(stderr, "Data not fully sent \n");
         return -1;
     }
     return 0;
