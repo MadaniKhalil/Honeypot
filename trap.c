@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <time.h>
 
 static int send_text(int socket_fd, const char *msg)
 {
@@ -34,6 +35,29 @@ static ssize_t read_line(int socket_fd, char *buffer, size_t size)
 
     buffer[bytes_read] = '\0';
     return bytes_read;
+}
+
+static void trim_line_ending(char *text)
+{
+    text[strcspn(text, "\r\n")] = '\0';
+}
+
+static int log_attempt(const char *ip, const char *username, const char *password)
+{
+    FILE *log_file = fopen("attempts.log", "a");
+    if (log_file == NULL) {
+        perror("fopen");
+        return -1;
+    }
+
+    time_t now = time(NULL);
+    fprintf(log_file, "%lld\t%s\t%s\t%s\n", (long long)now, ip, username, password);
+
+    if (fclose(log_file) == EOF) {
+        perror("fclose");
+        return -1;
+    }
+    return 0;
 }
 
 int main(void)
@@ -74,8 +98,8 @@ int main(void)
 
     printf("connected\n");
 
-    char username[256];
-    char password[256];
+    char username[256] = "";
+    char password[256] = "";
     if (send_text(connection_fd, "username: ") == -1 ||
         read_line(connection_fd, username, sizeof username) == -1 ||
         send_text(connection_fd, "password: ") == -1 ||
@@ -95,9 +119,18 @@ int main(void)
         close(listen_fd);
         return 1;
     }
-    printf("username: %s",username);
-    printf("password: %s",password);
-    printf("adress: %s\n",ip_text_buffer);
+    
+    trim_line_ending(username);
+    trim_line_ending(password);
+
+    if (log_attempt(ip_text_buffer, username, password) == -1) {
+        close(connection_fd);
+        close(listen_fd);
+        return 1;
+    }
+
+    printf("%s\t%s\t%s\n", ip_text_buffer, username, password);
+
     close(connection_fd);
     close(listen_fd);
     return 0;
