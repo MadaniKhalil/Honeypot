@@ -5,6 +5,7 @@
 #include <netinet/in.h> // Provides internet address structs and constants for you! for example : {struct sockaddr_in, htons(), htonl(), INADDR_LOOPBACK}
 #include <arpa/inet.h> // Provides address conversion functions like inet_ntop() and constants like INET_ADDRSTRLEN
 #include <time.h>
+#include <sqlite3.h>
 
 static int send_text(int socket_fd, const char *msg) // static = private to this file (Other .c files can't see it!) . const = read-only. Compiler shoots you if you attempt to change the text.
 {
@@ -60,6 +61,9 @@ static int log_attempt(const char *ip, const char *username, const char *passwor
     }
     return 0;
 }
+
+
+
 
 int main(void)
 {   // AF_INET == AddressFamily: internet (IPv4)
@@ -134,6 +138,29 @@ int main(void)
 
     printf("%s\t%s\t%s\n", ip_text_buffer, username, password);
 
+    // SQLite database creation
+    // Move this section before accepting visitors after you complete building , because if there's no visitor you cannot close() connection_fd 
+    
+    sqlite3 *db;
+    if (sqlite3_open("attempts.db",&db) != SQLITE_OK){
+        fprintf(stderr, "sqlite: %s\n",sqlite3_errmsg(db));
+        close(connection_fd);
+        close(listen_fd);
+        sqlite3_close(db);
+        return 1;
+    }
+
+    char *error_message = NULL;
+    if (sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS attempts (time INTEGER,ip TEXT,username TEXT,password TEXT)", NULL, NULL, &error_message) != SQLITE_OK){
+        fprintf(stderr, "sqlite: %s\n",error_message);
+        sqlite3_free(error_message); // SQLite allocates the error text , so free it;
+        close(connection_fd);
+        close(listen_fd);
+        sqlite3_close(db);
+        return 1;
+    }
+    
+ 
     close(connection_fd);
     close(listen_fd);
     return 0;
