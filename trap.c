@@ -159,7 +159,27 @@ int main(void)
         sqlite3_close(db);
         return 1;
     }
-    
+
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db,"INSERT INTO attempts(time, ip, username, password) VALUES(?,?,?,?)",
+                           -1, &stmt, NULL) != SQLITE_OK){
+        fprintf(stderr,"sqlite: %s\n",sqlite3_errmsg(db));
+        close(connection_fd);
+        close(listen_fd);
+        sqlite3_close(db);
+        return 1;
+    }
+    if (sqlite3_bind_int64(stmt,1,(sqlite3_int64)time(NULL)) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 2, ip_text_buffer, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 3, username, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 4, password, -1, SQLITE_TRANSIENT) != SQLITE_OK ) {
+        fprintf(stderr,"sqlite: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        close(connection_fd);
+        close(listen_fd);
+        sqlite3_close(db);
+        return 1;
+    }
  
     close(connection_fd);
     close(listen_fd);
