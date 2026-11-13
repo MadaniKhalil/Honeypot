@@ -43,27 +43,6 @@ static void trim_line_ending(char *text)
     text[strcspn(text, "\r\n")] = '\0'; // strcp(text,"\r\n") = counts how many characters at the start of text are not \r or \n 
 }
 
-static int log_attempt(const char *ip, const char *username, const char *password)
-{
-    FILE *log_file = fopen("attempts.log", "a"); // "a" for append
-    if (log_file == NULL) {
-        perror("fopen");
-        return -1;
-    }
-
-    time_t now = time(NULL); // time_t = signed integer/a type that holds a point in time
-    fprintf(log_file, "%lld\t%s\t%s\t%s\n", (long long)now, ip, username, password); // %lld = long long decimal . \t = a tab character (it shows as a wide gap in the terminal). 
-    // Why not simply just put a space ? passwords can contain spaces, so columns would be ambiguous.People rarely type a real tab,so it collides less , also it helps with SQLite later....
-
-    if (fclose(log_file) == EOF) { // fclose(log_file) closes the file and flushes any buffered text to disk. It returns 0 on success, or EOF on failure.
-        perror("fclose");
-        return -1;
-    }
-    return 0;
-}
-
-
-
 
 int main(void)
 {   // AF_INET == AddressFamily: internet (IPv4)
@@ -92,12 +71,31 @@ int main(void)
         return 1;
     }
 
+    // SQLite database creation (before accept, so no connection_fd to close yet)
+    sqlite3 *db;
+    if (sqlite3_open("attempts.db",&db) != SQLITE_OK){
+        fprintf(stderr, "sqlite: %s\n",sqlite3_errmsg(db));
+        sqlite3_close(db);
+        close(listen_fd);
+        return 1;
+    }
+
+    char *error_message = NULL;
+    if (sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS attempts (time INTEGER,ip TEXT,username TEXT,password TEXT)", NULL, NULL, &error_message) != SQLITE_OK){
+        fprintf(stderr, "sqlite: %s\n",error_message);
+        sqlite3_free(error_message); // SQLite allocates the error text , so free it;
+        sqlite3_close(db);
+        close(listen_fd);
+        return 1;
+    }
+
     struct sockaddr_storage visitor_addr; // sockaddr_storage = a big,generic address box. Large enough to hold any address type: IPv4, IPv6,and Unix; Good for any type of VISITORS.
     socklen_t visitor_addr_size = sizeof visitor_addr;
 
     int connection_fd = accept(listen_fd, (struct sockaddr *)&visitor_addr, &visitor_addr_size);
     if (connection_fd == -1) {
         perror("accept");
+        sqlite3_close(db);
         close(listen_fd);
         return 1;
     }
@@ -113,6 +111,7 @@ int main(void)
         read_line(connection_fd, password, sizeof password) == -1 ||
         send_text(connection_fd, "Login incorrect\n") == -1) {
 
+        sqlite3_close(db);
         close(connection_fd);
         close(listen_fd);
         return 1;
@@ -122,6 +121,7 @@ int main(void)
     // (->) is for struct pointers , if you can access struct directly just use (.)
     if (inet_ntop(AF_INET,&visitor_ipv4->sin_addr,ip_text_buffer,sizeof ip_text_buffer) == NULL){ // inet_ntop() converts a binary IP address into readable text.
         perror("inet_ntop");
+        sqlite3_close(db);
         close(connection_fd); 
         close(listen_fd);
         return 1;
@@ -130,43 +130,13 @@ int main(void)
     trim_line_ending(username);
     trim_line_ending(password);
 
-    if (log_attempt(ip_text_buffer, username, password) == -1) {
-        close(connection_fd);
-        close(listen_fd);
-        return 1;
-    }
-
-    printf("%s\t%s\t%s\n", ip_text_buffer, username, password);
-
-    // SQLite database creation
-    // Move this section before accepting visitors after you complete building , because if there's no visitor you cannot close() connection_fd 
-    
-    sqlite3 *db;
-    if (sqlite3_open("attempts.db",&db) != SQLITE_OK){
-        fprintf(stderr, "sqlite: %s\n",sqlite3_errmsg(db));
-        close(connection_fd);
-        close(listen_fd);
-        sqlite3_close(db);
-        return 1;
-    }
-
-    char *error_message = NULL;
-    if (sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS attempts (time INTEGER,ip TEXT,username TEXT,password TEXT)", NULL, NULL, &error_message) != SQLITE_OK){
-        fprintf(stderr, "sqlite: %s\n",error_message);
-        sqlite3_free(error_message); // SQLite allocates the error text , so free it;
-        close(connection_fd);
-        close(listen_fd);
-        sqlite3_close(db);
-        return 1;
-    }
-
     sqlite3_stmt *stmt;
     if (sqlite3_prepare_v2(db,"INSERT INTO attempts(time, ip, username, password) VALUES(?,?,?,?)",
                            -1, &stmt, NULL) != SQLITE_OK){
         fprintf(stderr,"sqlite: %s\n",sqlite3_errmsg(db));
+        sqlite3_close(db);
         close(connection_fd);
         close(listen_fd);
-        sqlite3_close(db);
         return 1;
     }
     if (sqlite3_bind_int64(stmt,1,(sqlite3_int64)time(NULL)) != SQLITE_OK ||
@@ -174,13 +144,24 @@ int main(void)
         sqlite3_bind_text(stmt, 3, username, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
         sqlite3_bind_text(stmt, 4, password, -1, SQLITE_TRANSIENT) != SQLITE_OK ) {
         fprintf(stderr,"sqlite: %s\n", sqlite3_errmsg(db));
-        sqlite3_finalize(stmt);
+        sqlite3_finalize(stmt); // free()
+        sqlite3_close(db);
         close(connection_fd);
         close(listen_fd);
-        sqlite3_close(db);
         return 1;
     }
- 
+    
+    if (sqlite3_step(stmt) != SQLITE_DONE){
+        fprintf(stderr,"sqlite: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+        close(connection_fd);  
+        close(listen_fd);
+        return 1;
+    }
+    
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
     close(connection_fd);
     close(listen_fd);
     return 0;
