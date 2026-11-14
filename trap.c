@@ -88,16 +88,14 @@ int main(void)
         close(listen_fd);
         return 1;
     }
-
+    while (1) {
     struct sockaddr_storage visitor_addr; // sockaddr_storage = a big,generic address box. Large enough to hold any address type: IPv4, IPv6,and Unix; Good for any type of VISITORS.
     socklen_t visitor_addr_size = sizeof visitor_addr;
 
     int connection_fd = accept(listen_fd, (struct sockaddr *)&visitor_addr, &visitor_addr_size);
     if (connection_fd == -1) {
         perror("accept");
-        sqlite3_close(db);
-        close(listen_fd);
-        return 1;
+        continue;
     }
 
     printf("connected\n");
@@ -111,20 +109,16 @@ int main(void)
         read_line(connection_fd, password, sizeof password) == -1 ||
         send_text(connection_fd, "Login incorrect\n") == -1) {
 
-        sqlite3_close(db);
         close(connection_fd);
-        close(listen_fd);
-        return 1;
+        continue;
     }
     char ip_text_buffer[INET_ADDRSTRLEN]; // INET_ADDRSTRLEN = a constant: the buffer size needed to hold an IPv4 address as text, including the '\0'.
     struct sockaddr_in * visitor_ipv4 = (struct sockaddr_in *)&visitor_addr;
     // (->) is for struct pointers , if you can access struct directly just use (.)
     if (inet_ntop(AF_INET,&visitor_ipv4->sin_addr,ip_text_buffer,sizeof ip_text_buffer) == NULL){ // inet_ntop() converts a binary IP address into readable text.
         perror("inet_ntop");
-        sqlite3_close(db);
         close(connection_fd); 
-        close(listen_fd);
-        return 1;
+        continue;
     }
     
     trim_line_ending(username);
@@ -134,10 +128,8 @@ int main(void)
     if (sqlite3_prepare_v2(db,"INSERT INTO attempts(time, ip, username, password) VALUES(?,?,?,?)",
                            -1, &stmt, NULL) != SQLITE_OK){
         fprintf(stderr,"sqlite: %s\n",sqlite3_errmsg(db));
-        sqlite3_close(db);
         close(connection_fd);
-        close(listen_fd);
-        return 1;
+        continue;
     }
     if (sqlite3_bind_int64(stmt,1,(sqlite3_int64)time(NULL)) != SQLITE_OK ||
         sqlite3_bind_text(stmt, 2, ip_text_buffer, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
@@ -145,24 +137,23 @@ int main(void)
         sqlite3_bind_text(stmt, 4, password, -1, SQLITE_TRANSIENT) != SQLITE_OK ) {
         fprintf(stderr,"sqlite: %s\n", sqlite3_errmsg(db));
         sqlite3_finalize(stmt); // free()
-        sqlite3_close(db);
         close(connection_fd);
-        close(listen_fd);
-        return 1;
+        continue;
     }
     
     if (sqlite3_step(stmt) != SQLITE_DONE){
         fprintf(stderr,"sqlite: %s\n", sqlite3_errmsg(db));
         sqlite3_finalize(stmt);
-        sqlite3_close(db);
-        close(connection_fd);  
-        close(listen_fd);
-        return 1;
+        close(connection_fd); 
+        continue;
     }
     
     sqlite3_finalize(stmt);
-    sqlite3_close(db);
     close(connection_fd);
+  }
+
+
+    sqlite3_close(db);
     close(listen_fd);
     return 0;
 }
