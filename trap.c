@@ -108,6 +108,16 @@ int main(void)
 
         printf("connected\n");
 
+        // this block takes care of the case when:
+        // an idle nc occurs and freezes the whole trap, because recv() blocks forever 
+        struct timeval timeout;
+        timeout.tv_sec = 15;
+        timeout.tv_usec = 0;
+        if (setsockopt(connection_fd,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof timeout) == -1){
+              perror("timeout");
+              close(connection_fd);
+              continue;
+        }
         // = "" in case visitors don't send anything, avoids garbage
         char username[256] = "";
         char password[256] = "";
