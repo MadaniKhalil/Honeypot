@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <unistd.h> // Provides POSIX system calls. C does not give you close() for file descriptors, because it is a linux call.
-#include <string.h> 
-#include <sys/socket.h> 
+#include <string.h>
+#include <sys/socket.h>
 #include <netinet/in.h> // Provides internet address structs and constants for you! for example : {struct sockaddr_in, htons(), htonl(), INADDR_LOOPBACK}
 #include <arpa/inet.h> // Provides address conversion functions like inet_ntop() and constants like INET_ADDRSTRLEN
 #include <time.h>
@@ -13,10 +13,10 @@ static int send_text(int socket_fd, const char *msg) // static = private to this
     ssize_t bytes_sent = send(socket_fd, msg, len, MSG_NOSIGNAL); // ssize_t = signed integer for byte counts (send() and recv() return how bytes moved or -1 are lost so ssize_t is better than size_t here)
 
     if (bytes_sent == -1) {
-        perror("send"); 
+        perror("send");
         return -1;
     }
-    if (bytes_sent < len) { // If some data was lost 
+    if (bytes_sent < len) { // If some data was lost
         fprintf(stderr, "Data not fully sent \n");
         return -1;
     }
@@ -40,7 +40,7 @@ static ssize_t read_line(int socket_fd, char *buffer, size_t size)
 
 static void trim_line_ending(char *text)
 {
-    text[strcspn(text, "\r\n")] = '\0'; // strcp(text,"\r\n") = counts how many characters at the start of text are not \r or \n 
+    text[strcspn(text, "\r\n")] = '\0'; // strcp(text,"\r\n") = counts how many characters at the start of text are not \r or \n
 }
 
 
@@ -106,10 +106,18 @@ int main(void)
             continue;
         }
 
+        char ip_text_buffer[INET_ADDRSTRLEN]; // buffer size for an IPv4 address as text, including '\0'
+        struct sockaddr_in *visitor_ipv4 = (struct sockaddr_in *)&visitor_addr;
+        if (inet_ntop(AF_INET, &visitor_ipv4->sin_addr, ip_text_buffer, sizeof ip_text_buffer) == NULL) {
+            perror("inet_ntop");
+            close(connection_fd);
+            continue;
+        }
+
         printf("connected\n");
 
         // this block takes care of the case when:
-        // an idle nc occurs and freezes the whole trap, because recv() blocks forever 
+        // an idle nc occurs and freezes the whole trap, because recv() blocks forever
         struct timeval timeout;
         timeout.tv_sec = 15;
         timeout.tv_usec = 0;
@@ -118,25 +126,23 @@ int main(void)
               close(connection_fd);
               continue;
         }
+
         // = "" in case visitors don't send anything, avoids garbage
         char username[256] = "";
+        int got_username = 0;
+        send_text(connection_fd, "username: ");
+        ssize_t username_bytes = read_line(connection_fd, username, sizeof username) ;
+        if (username_bytes > 0) got_username = 1;
+
         char password[256] = "";
-        if (send_text(connection_fd, "username: ") == -1 ||
-            read_line(connection_fd, username, sizeof username) == -1 ||
-            send_text(connection_fd, "password: ") == -1 ||
-            read_line(connection_fd, password, sizeof password) == -1 ||
-            send_text(connection_fd, "Login incorrect\n") == -1) {
-            close(connection_fd);
-            continue;
+        int got_password = 0;
+        if (got_username){
+            send_text(connection_fd, "password: ");
+            ssize_t password_bytes = read_line(connection_fd, password, sizeof password);
+            if (password_bytes > 0) got_password = 1;
         }
 
-        char ip_text_buffer[INET_ADDRSTRLEN]; // buffer size for an IPv4 address as text, including '\0'
-        struct sockaddr_in *visitor_ipv4 = (struct sockaddr_in *)&visitor_addr;
-        if (inet_ntop(AF_INET, &visitor_ipv4->sin_addr, ip_text_buffer, sizeof ip_text_buffer) == NULL) {
-            perror("inet_ntop");
-            close(connection_fd);
-            continue;
-        }
+        send_text(connection_fd, "login incorrect");
 
         trim_line_ending(username);
         trim_line_ending(password);
@@ -150,13 +156,45 @@ int main(void)
         }
 
         if (sqlite3_bind_int64(stmt, 1, (sqlite3_int64)time(NULL)) != SQLITE_OK ||
-            sqlite3_bind_text(stmt, 2, ip_text_buffer, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-            sqlite3_bind_text(stmt, 3, username, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-            sqlite3_bind_text(stmt, 4, password, -1, SQLITE_TRANSIENT) != SQLITE_OK) {
+            sqlite3_bind_text(stmt, 2, ip_text_buffer, -1, SQLITE_TRANSIENT) != SQLITE_OK) {
             fprintf(stderr, "sqlite: %s\n", sqlite3_errmsg(db));
             sqlite3_finalize(stmt);
             close(connection_fd);
             continue;
+        }
+
+        if (got_username == 1) {
+            if (sqlite3_bind_text(stmt, 3, username, -1, SQLITE_TRANSIENT) != SQLITE_OK){
+                fprintf(stderr, "sqlite: %s\n", sqlite3_errmsg(db));
+                sqlite3_finalize(stmt);
+                close(connection_fd);
+                continue;
+            }
+        }
+        if (got_username == 0){
+            if (sqlite3_bind_null(stmt, 3) != SQLITE_OK){
+                fprintf(stderr, "sqlite: %s\n", sqlite3_errmsg(db));
+                sqlite3_finalize(stmt);
+                close(connection_fd);
+                continue;
+            }
+        }
+
+        if (got_password == 1){
+            if (sqlite3_bind_text(stmt, 4, password, -1, SQLITE_TRANSIENT) != SQLITE_OK){
+                fprintf(stderr, "sqlite: %s\n", sqlite3_errmsg(db));
+                sqlite3_finalize(stmt);
+                close(connection_fd);
+                continue;
+            }
+        }
+        if (got_password == 0){
+            if (sqlite3_bind_null(stmt, 4) != SQLITE_OK){
+                fprintf(stderr, "sqlite: %s\n", sqlite3_errmsg(db));
+                sqlite3_finalize(stmt);
+                close(connection_fd);
+                continue;
+            }
         }
 
         if (sqlite3_step(stmt) != SQLITE_DONE) {
