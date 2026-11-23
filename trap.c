@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <unistd.h> // Provides POSIX system calls. C does not give you close() for file descriptors, because it is a linux call.
+#include <unistd.h> // POSIX calls such as close()
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h> // Provides internet address structs and constants for you! for example : {struct sockaddr_in, htons(), htonl(), INADDR_LOOPBACK}
@@ -40,7 +40,7 @@ static ssize_t read_line(int socket_fd, char *buffer, size_t size)
 
 static void trim_line_ending(char *text)
 {
-    text[strcspn(text, "\r\n")] = '\0'; // strcp(text,"\r\n") = counts how many characters at the start of text are not \r or \n
+    text[strcspn(text, "\r\n")] = '\0'; // strscpn(text,"\r\n") = counts how many characters at the start of text are not \r or \n
 }
 
 
@@ -127,6 +127,11 @@ int main(void)
               continue;
         }
 
+        // In case a bot connects and hangs up immediatly (which can happen thousands of times) we avoid noise
+        if (send_text(connection_fd, "Welcome to Zvenden-OS v0.9\r\n") == 0) {
+            send_text(connection_fd, "Restricted area. Every connection is logged and every login attempt is recorded.\r\n");
+        }
+
         // = "" in case visitors don't send anything, avoids garbage
         char username[256] = "";
         int got_username = 0;
@@ -142,7 +147,7 @@ int main(void)
             if (password_bytes > 0) got_password = 1;
         }
 
-        send_text(connection_fd, "login incorrect");
+        send_text(connection_fd, "Login incorrect\n");
 
         trim_line_ending(username);
         trim_line_ending(password);
