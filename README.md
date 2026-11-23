@@ -11,11 +11,11 @@ A small honeypot written in C. It listens on a TCP port, shows a fake telnet log
 - Visitor IP extracted and logged
 - SQLite storage with prepared statements (inputs are bound, never pasted into SQL)
 - Accept loop: a failed visitor never stops the trap
+- Receive timeout: an idle visitor is dropped after 15 seconds
+- Visitors who disconnect or time out mid-login are logged, with NULL for the fields that never arrived
 
 ## Planned
 
-- Timeout for silent visitors
-- Log visitors who disconnect mid-login
 - Tarpit (slow replies) and fake shell with canned replies only
 - Flask dashboard: top passwords, attacks per hour
 - Docker, one-command run
@@ -50,3 +50,8 @@ The trap listens on `127.0.0.1:2323` only, so nothing outside your machine can r
 - Visitor input is stored with `sqlite3_bind_text`, so a password like `x'); DROP TABLE attempts; --` is saved as plain text.
 - Visitor input never reaches `system()` or a shell.
 - The database and logs are git-ignored, so captured data is never committed.
+
+## Known limitations
+
+- IPv4 only
+- One visitor at a time (serial handling)
